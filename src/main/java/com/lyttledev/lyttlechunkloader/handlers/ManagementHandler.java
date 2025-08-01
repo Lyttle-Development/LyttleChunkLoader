@@ -1,6 +1,7 @@
 package com.lyttledev.lyttlechunkloader.handlers;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
+import com.lyttledev.lyttlechunkloader.utils.ChunkMessages;
 import com.lyttledev.lyttleutils.types.Config;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -18,18 +19,17 @@ import java.util.*;
  * ManagementHandler for chunk claim/load logic.
  * - Claims (single chunk) when lightning rod is placed on lodestone (rod must be directly above lodestone)
  * - Removes claim if lodestone or rod is broken/removed (single chunk)
- * - Delegates grid visualization to ChunkClaimManager.
+ * - Delegates grid visualization to ChunkMessages.
  */
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
-    private final int GRID_RADIUS = 4; // 9x9 grid (-4 to +4), centered
     private final Config chunkConfig;
-    private final ChunkClaimManager visualizer;
+    private final ChunkMessages visualizer;
 
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
-        this.visualizer = new ChunkClaimManager(GRID_RADIUS);
+        this.visualizer = new ChunkMessages(4);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -146,7 +146,7 @@ public class ManagementHandler implements Listener {
             getAllClaimsByPlayer(),
             claimedNow ? getChunkKey(lodestoneLocation) : null
         );
-        plugin.borderHighlighter.sendBorders(player, lodestoneLocation, GRID_RADIUS, 50);
+        plugin.borderHighlighter.sendBorders(player, lodestoneLocation, 2, 100);
     }
 
     private void removeClaimAt(Location lodestoneLocation, Player player) {
