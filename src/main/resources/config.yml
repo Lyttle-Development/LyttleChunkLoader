@@ -1,0 +1,26 @@
+# ###################################################
+#            Lyttle Nametag - config.yml            #
+# ###################################################
+# Main configuration for the Lyttle Nametag plugin.
+# Customize navigation messages and formatting below.
+#
+# ⚠️ Do NOT remove any keys — the plugin depends on them.
+# You may freely change text and styling.
+#
+# Custom placeholders available for navigation items:
+#   <PLAYER_FACING> - Player's current direction (e.g. South-East)
+#
+#   <SERVER_TIME_24_H> - In-game time (24h format)
+#   <STATISTIC_TOTAL_SERVER_DAYS> - Days since first join
+#
+# Use MiniMessage formatting for colors/styling.
+#
+# Navigation Items: (add any Material from available_materials.txt)
+COMPASS: "<white>X:<yellow>%player_x% <white>Y:<yellow>%player_y% <white>Z:<yellow>%player_z% <gray>| <white><PLAYER_FACING>"
+CLOCK: "<white><SERVER_TIME_24_H> <gray>| <yellow><STATISTIC_TOTAL_SERVER_DAYS> days"
+
+# Update rate:
+update_rate: 0.5 # in seconds
+
+# ⚠️ Do not change this value.
+config_version: 0

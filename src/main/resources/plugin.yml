@@ -1,0 +1,20 @@
+name: LyttleChunkLoader
+description: Minimal, real-time Minecraft navigation overlay with direction, time, and server day tracking
+version: '${projectVersion}'
+main: com.lyttledev.lyttlechunkloader.LyttleChunkLoader
+api-version: '1.21'
+authors:
+  - LyttleDevelopment
+  - ThatsATim
+  - Stualyttle
+
+depend:
+  - packetevents
+
+softdepend:
+  - PlaceholderAPI
+
+commands:
+  lyttlechunkloader:
+    description: Admin command, mainly reload the config without the rest of the server
+    permission: lyttlechunkloader.lyttlechunkloader
