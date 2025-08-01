@@ -2,175 +2,171 @@ package com.lyttledev.lyttlechunkloader.handlers;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttleutils.types.Config;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
- * ManagementHandler is responsible for player chunk claiming and border highlighting logic.
- * Uses the Config utility for robust YAML config access.
+ * ManagementHandler for chunk claim/load logic.
+ * - Claims (single chunk) when lightning rod is placed on lodestone (rod must be directly above lodestone)
+ * - Removes claim if lodestone or rod is broken/removed (single chunk)
+ * - Delegates grid visualization to ChunkClaimManager.
  */
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
-    private final int CLAIM_RADIUS = 2; // Default claim radius
-
-    // Reference to the chunk config
+    private final int GRID_RADIUS = 4; // 9x9 grid (-4 to +4), centered
     private final Config chunkConfig;
+    private final ChunkClaimManager visualizer;
 
-    /**
-     * Registers the event listener and sets up config reference.
-     * @param plugin Main plugin instance.
-     */
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
+        this.visualizer = new ChunkClaimManager(GRID_RADIUS);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
-    @EventHandler
-    public void onInteract(PlayerInteractEvent event) {
-        checkBlock(event);
-    }
-
-    /**
-     * Constructs a chunk key for storage (world:x:z).
-     */
     private String getChunkKey(Location location) {
         Chunk chunk = location.getChunk();
         return chunk.getWorld().getName() + ":" + chunk.getX() + ":" + chunk.getZ();
     }
 
-    /**
-     * Constructs player key (UUID as string).
-     */
+    private String getChunkKey(World world, int cx, int cz) {
+        return world.getName() + ":" + cx + ":" + cz;
+    }
+
     private String getPlayerKey(Player player) {
         return player.getUniqueId().toString();
     }
 
-    /**
-     * Gets all claimed chunk keys for the given player.
-     */
     private List<String> getPlayerChunks(Player player) {
         String playerKey = getPlayerKey(player);
-        // Defensive: always use getStringList to avoid type issues.
         List<String> chunkList = chunkConfig.getStringList(playerKey);
         return chunkList != null ? chunkList : new ArrayList<>();
     }
 
-    /**
-     * Gets all claimed chunks by all players as a set of chunk keys.
-     */
-    private Set<String> getAllClaimedChunks() {
-        Set<String> claimed = new HashSet<>();
-        String[] allPlayers = chunkConfig.getKeys(""); // Top-level keys = player UUIDs
+    private Map<String, Set<String>> getAllClaimsByPlayer() {
+        Map<String, Set<String>> map = new HashMap<>();
+        String[] allPlayers = chunkConfig.getKeys("");
         if (allPlayers != null) {
             for (String playerKey : allPlayers) {
                 List<String> chunks = chunkConfig.getStringList(playerKey);
-                if (chunks != null) claimed.addAll(chunks);
+                if (chunks != null && !chunks.isEmpty()) {
+                    map.put(playerKey, new HashSet<>(chunks));
+                }
             }
         }
-        return claimed;
+        return map;
     }
 
-    /**
-     * Save a player's claimed chunks list to config.
-     */
     private void savePlayerChunks(Player player, List<String> chunkList) {
         String playerKey = getPlayerKey(player);
         chunkConfig.set(playerKey, chunkList);
     }
 
-    /**
-     * Handles player interact event logic for chunk claiming.
-     */
-    private void checkBlock(PlayerInteractEvent event) {
-        Block clickedBlock = event.getClickedBlock();
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        Block block = event.getBlockPlaced();
         Player player = event.getPlayer();
-        ItemStack item = event.getItem();
 
-        if (clickedBlock == null) return;
-        Location location = clickedBlock.getLocation();
-
-        if (item != null && item.getType() == Material.LODESTONE && location != null) {
-            player.sendMessage("Put a lightning rod on this block to load the chunk. (will cost in game currency)");
-            plugin.borderHighlighter.sendBorders(player, location, CLAIM_RADIUS, 50);
-        }
-
-        if (item != null && item.getType() == Material.LIGHTNING_ROD && location != null) {
-            loadChunkForPlayer(player, location);
+        if (block.getType() == Material.LIGHTNING_ROD) {
+            Block below = block.getLocation().clone().add(0, -1, 0).getBlock();
+            if (below.getType() == Material.LODESTONE) {
+                claimChunkAt(below.getLocation(), player);
+            }
         }
     }
 
-    /**
-     * Loads the chunk at the given location for the player.
-     * Shows border map, plays sound, and persists claim.
-     */
-    private void loadChunkForPlayer(Player player, Location center) {
-        String chunkKey = getChunkKey(center);
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        Location location = block.getLocation();
+        Player player = event.getPlayer();
+
+        if (block.getType() == Material.LODESTONE) {
+            Block above = location.clone().add(0, 1, 0).getBlock();
+            if (above.getType() == Material.LIGHTNING_ROD) {
+                removeClaimAt(location, player);
+            }
+        } else if (block.getType() == Material.LIGHTNING_ROD) {
+            Block below = location.clone().add(0, -1, 0).getBlock();
+            if (below.getType() == Material.LODESTONE) {
+                removeClaimAt(below.getLocation(), player);
+            }
+        }
+    }
+
+    private void claimChunkAt(Location lodestoneLocation, Player player) {
+        Block lodestone = lodestoneLocation.getBlock();
+        Block rod = lodestoneLocation.clone().add(0, 1, 0).getBlock();
+
+        if (lodestone.getType() != Material.LODESTONE || rod.getType() != Material.LIGHTNING_ROD) {
+            player.sendMessage(Component.text("You can only claim if a lightning rod is placed on top of a lodestone.", NamedTextColor.GRAY));
+            return;
+        }
+
+        Chunk centerChunk = lodestoneLocation.getChunk();
         List<String> chunkList = getPlayerChunks(player);
-        Set<String> allClaimed = getAllClaimedChunks();
+        boolean alreadyClaimed = false;
 
-        // Build border display string
-        String borderMap = buildBorderMap(center, chunkList, allClaimed);
-
-        // Only allow if not already claimed
-        if (!chunkList.contains(chunkKey)) {
-            chunkList.add(chunkKey);
-            savePlayerChunks(player, chunkList);
-            player.sendMessage("Chunk loaded: " + chunkKey);
-            player.playSound(center, Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f); // Satisfying level-up sound
-        } else {
-            player.sendMessage("This chunk is already loaded: " + chunkKey);
-        }
-        player.sendMessage(borderMap);
-        plugin.borderHighlighter.sendBorders(player, center, CLAIM_RADIUS, 50);
-    }
-
-    /**
-     * Builds a text border map for visualizing chunk claim status.
-     * Legend:
-     *  Y = Claimable by player (already owned)
-     *  O = Unclaimed but in claim radius
-     *  X = Claimed by others
-     *  L = Lodestone/center chunk
-     *  . = Outside visual range
-     */
-    private String buildBorderMap(Location center, List<String> playerChunks, Set<String> allClaimed) {
-        StringBuilder sb = new StringBuilder();
-        int size = CLAIM_RADIUS * 2 + 3; // Space for border and center
-        Chunk centerChunk = center.getChunk();
-
-        for (int dz = -CLAIM_RADIUS - 1; dz <= CLAIM_RADIUS + 1; dz++) {
-            sb.append("...");
-            for (int dx = -CLAIM_RADIUS - 1; dx <= CLAIM_RADIUS + 1; dx++) {
+        // Still check the 3x3 area to see if any chunks are already claimed
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
                 int cx = centerChunk.getX() + dx;
                 int cz = centerChunk.getZ() + dz;
-                String key = center.getWorld().getName() + ":" + cx + ":" + cz;
-                if (dx == 0 && dz == 0) {
-                    sb.append("L ");
-                } else if (Math.abs(dx) == CLAIM_RADIUS + 1 || Math.abs(dz) == CLAIM_RADIUS + 1) {
-                    sb.append(". ");
-                } else if (playerChunks.contains(key)) {
-                    sb.append("Y ");
-                } else if (allClaimed.contains(key)) {
-                    sb.append("X ");
-                } else if (Math.abs(dx) <= CLAIM_RADIUS && Math.abs(dz) <= CLAIM_RADIUS) {
-                    sb.append("O ");
-                } else {
-                    sb.append(". ");
+                String key = getChunkKey(lodestoneLocation.getWorld(), cx, cz);
+                if (chunkList.contains(key)) {
+                    alreadyClaimed = true;
                 }
             }
-            sb.append("...\n");
         }
-        return sb.toString();
+
+        boolean claimedNow = false;
+        if (!alreadyClaimed) {
+            // Only add the center chunk to player's claims
+            String key = getChunkKey(lodestoneLocation);
+            if (!chunkList.contains(key)) {
+                chunkList.add(key);
+                claimedNow = true;
+                savePlayerChunks(player, chunkList);
+            }
+        }
+
+        visualizer.sendVisualizer(
+            lodestoneLocation,
+            player,
+            getPlayerKey(player),
+            getAllClaimsByPlayer(),
+            claimedNow ? getChunkKey(lodestoneLocation) : null
+        );
+        plugin.borderHighlighter.sendBorders(player, lodestoneLocation, GRID_RADIUS, 50);
+    }
+
+    private void removeClaimAt(Location lodestoneLocation, Player player) {
+        Block lodestone = lodestoneLocation.getBlock();
+        Block rod = lodestoneLocation.clone().add(0, 1, 0).getBlock();
+
+        if (!(lodestone.getType() == Material.LODESTONE || rod.getType() == Material.LIGHTNING_ROD)) {
+            return;
+        }
+
+        List<String> chunkList = getPlayerChunks(player);
+        String key = getChunkKey(lodestoneLocation);
+
+        // Only remove the center chunk
+        boolean found = chunkList.remove(key);
+
+        if (found) {
+            savePlayerChunks(player, chunkList);
+            player.sendMessage(Component.text("Chunk unloaded: ", NamedTextColor.GRAY)
+                    .append(Component.text(key, NamedTextColor.WHITE)));
+        }
     }
 }
