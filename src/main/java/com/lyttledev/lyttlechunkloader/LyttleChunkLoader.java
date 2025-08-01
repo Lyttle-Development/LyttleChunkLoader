@@ -62,6 +62,10 @@ public final class LyttleChunkLoader extends JavaPlugin {
         if (!new File(getDataFolder(), configPath).exists())
             saveResource(configPath, false);
 
+        String chunksPath = "chunks.yml";
+        if (!new File(getDataFolder(), chunksPath).exists())
+            saveResource(chunksPath, false);
+
         String messagesPath = "messages.yml";
         if (!new File(getDataFolder(), messagesPath).exists())
             saveResource(messagesPath, false);
@@ -70,6 +74,9 @@ public final class LyttleChunkLoader extends JavaPlugin {
         String defaultPath = "#defaults/";
         String defaultGeneralPath = defaultPath + configPath;
         saveResource(defaultGeneralPath, true);
+
+        String defaultChunksPath = defaultPath + chunksPath;
+        saveResource(defaultChunksPath, true);
 
         String defaultMessagesPath = defaultPath + messagesPath;
         saveResource(defaultMessagesPath, true);
