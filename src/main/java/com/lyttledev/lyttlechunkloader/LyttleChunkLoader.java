@@ -1,6 +1,7 @@
 package com.lyttledev.lyttlechunkloader;
 
 import com.lyttledev.lyttlechunkloader.commands.LyttleChunkLoaderCommand;
+import com.lyttledev.lyttlechunkloader.handlers.ManagementHandler;
 import com.lyttledev.lyttlechunkloader.handlers.ProtectionHandler;
 import com.lyttledev.lyttlechunkloader.types.Configs;
 import com.lyttledev.lyttlechunkloader.utils.MaterialExporter;
@@ -18,7 +19,6 @@ public final class LyttleChunkLoader extends JavaPlugin {
     public Console console;
     public Message message;
     public GlobalConfig global;
-    public ProtectionHandler compassHandler;
     public MiniMessage miniMessage = MiniMessage.miniMessage();
 
     @Override
@@ -38,7 +38,8 @@ public final class LyttleChunkLoader extends JavaPlugin {
         new LyttleChunkLoaderCommand(this);
 
         // Handlers
-        this.compassHandler = new ProtectionHandler(this);
+        new ProtectionHandler(this);
+        new ManagementHandler(this);
 
         // Export Material list on plugin startup (only if file doesn't exist)
         File materialsFile = new File(getDataFolder(), "available_materials.txt");

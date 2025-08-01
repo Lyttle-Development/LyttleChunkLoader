@@ -28,10 +28,13 @@ public class ProtectionHandler implements Listener {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
-        block(event);
+//        block(event);
     }
 
     private void block(PlayerInteractEvent event) {
+        // Check if the item is placing down a lodestone and allow it
+        ItemStack item = event.getItem();
+        if (item != null && item.getType() == Material.LODESTONE) return;
         event.setCancelled(true);
     }
 }
