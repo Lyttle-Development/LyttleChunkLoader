@@ -1,7 +1,6 @@
 package com.lyttledev.lyttlechunkloader.handlers;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
-import com.lyttledev.lyttlechunkloader.utils.WorldBorderChunkHighlighter;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -12,12 +11,15 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
 
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
-        // Register the event listener
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -26,53 +28,54 @@ public class ManagementHandler implements Listener {
         checkBlock(event);
     }
 
-    private String getChunkPlayer(Player player) {
-        return player.getWorld().getName() + ":" + player.getUniqueId();
+    private String getChunkKey(Location location) {
+        Chunk chunk = location.getChunk();
+        return chunk.getWorld().getName() + ":" + chunk.getX() + ":" + chunk.getZ();
     }
 
-    private String getChunkKey(Player player) {
-        return getChunkPlayer(player) + ":" + player.getLocation().getChunk().getX() + ":" + player.getLocation().getChunk().getZ();
+    private String getPlayerKey(Player player) {
+        return player.getUniqueId().toString();
     }
 
-    private Chunk[] getPlayerWorldChunks(Player player) {
-            // Find all chunks loaded by the player in the current world
-            String[] chunks = (String[]) plugin.config.chunks.getAll("");
-
-            for (String chunkKey : chunks) {
-                plugin.console.log(chunkKey);
-            }
-            return player.getWorld().getLoadedChunks();
+    private List<String> getPlayerChunks(Player player) {
+        String playerKey = getPlayerKey(player);
+        List<String> chunkList = (List<String>) plugin.config.chunks.get(playerKey);
+        if (chunkList == null) {
+            return new ArrayList<>();
         }
+        return new ArrayList<>(chunkList);
+    }
+
+    private void savePlayerChunks(Player player, List<String> chunkList) {
+        String playerKey = getPlayerKey(player);
+        plugin.config.chunks.set(playerKey, chunkList);
+    }
 
     private void checkBlock(PlayerInteractEvent event) {
         Block clickedBlock = event.getClickedBlock();
         Player player = event.getPlayer();
         ItemStack item = event.getItem();
 
+        if (clickedBlock == null) return;
         Location location = clickedBlock.getLocation();
 
         if (item != null && item.getType() == Material.LODESTONE && location != null) {
             player.sendMessage("Put a lightning rod on this block to load the chunk. (will cost in game currency)");
-
-            // Highlight 3x3 chunk area for 5 seconds
             plugin.borderHighlighter.sendBorders(player, location, 2, 50);
         }
 
         if (item != null && item.getType() == Material.LIGHTNING_ROD && location != null) {
-//            getPlayerWorldChunks(player);
-            loadCHunk(player, location);
+            loadChunkForPlayer(player, location);
         }
     }
 
-    private void loadCHunk(Player player, Location location) {
-        String chunkKey = getChunkKey(player);
-        String playerChunks = (String) plugin.config.chunks.get(chunkKey);
-        if (playerChunks == null) {
-            playerChunks = "";
-        }
-        if (!playerChunks.contains(chunkKey)) {
-            playerChunks += chunkKey + ",";
-            plugin.config.chunks.set(chunkKey, playerChunks);
+    private void loadChunkForPlayer(Player player, Location location) {
+        String chunkKey = getChunkKey(location);
+        List<String> chunkList = getPlayerChunks(player);
+
+        if (!chunkList.contains(chunkKey)) {
+            chunkList.add(chunkKey);
+            savePlayerChunks(player, chunkList);
             player.sendMessage("Chunk loaded: " + chunkKey);
         } else {
             player.sendMessage("This chunk is already loaded: " + chunkKey);
