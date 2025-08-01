@@ -12,11 +12,9 @@ import org.bukkit.inventory.ItemStack;
 
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
-    private final WorldBorderChunkHighlighter borderHighlighter;
 
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
-        this.borderHighlighter = new WorldBorderChunkHighlighter(3, 16.0); // 3 chunks radius, 16 blocks per chunk
         // Register the event listener
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
@@ -33,7 +31,7 @@ public class ManagementHandler implements Listener {
 
         if (item != null && item.getType() == Material.LODESTONE) {
             player.sendMessage("You interacted with a Lodestone!");
-            borderHighlighter.sendBorders(player, clickedBlock.getLocation());
+            plugin.borderHighlighter.sendBorders(player, clickedBlock.getLocation(), 2, 50); // Highlight 3x3 chunk area for 5 seconds
         }
     }
 }

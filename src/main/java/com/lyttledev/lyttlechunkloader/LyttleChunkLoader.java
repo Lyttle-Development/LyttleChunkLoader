@@ -5,6 +5,7 @@ import com.lyttledev.lyttlechunkloader.handlers.ManagementHandler;
 import com.lyttledev.lyttlechunkloader.handlers.ProtectionHandler;
 import com.lyttledev.lyttlechunkloader.types.Configs;
 import com.lyttledev.lyttlechunkloader.utils.MaterialExporter;
+import com.lyttledev.lyttlechunkloader.utils.WorldBorderChunkHighlighter;
 import com.lyttledev.lyttleutils.utils.communication.Console;
 import com.lyttledev.lyttleutils.utils.communication.Message;
 import com.lyttledev.lyttleutils.utils.storage.GlobalConfig;
@@ -20,6 +21,7 @@ public final class LyttleChunkLoader extends JavaPlugin {
     public Message message;
     public GlobalConfig global;
     public MiniMessage miniMessage = MiniMessage.miniMessage();
+    public WorldBorderChunkHighlighter borderHighlighter;
 
     @Override
     public void onEnable() {
@@ -33,6 +35,7 @@ public final class LyttleChunkLoader extends JavaPlugin {
         // Plugin startup logic
         this.console = new Console(this);
         this.message = new Message(this, config.messages, global);
+        this.borderHighlighter = new WorldBorderChunkHighlighter(this);
 
         // Commands
         new LyttleChunkLoaderCommand(this);
