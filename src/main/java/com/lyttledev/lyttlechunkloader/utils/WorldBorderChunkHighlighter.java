@@ -4,29 +4,22 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerWorldBorderCenter;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerWorldBorderSize;
+import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitRunnable;
 
 public class WorldBorderChunkHighlighter {
 
     private final int chunkRadius;
     private final double worldBorderSize;
 
-    /**
-     * @param chunkRadius the radius in chunks around the center chunk (e.g., 1 = 3x3, 2 = 5x5, etc.)
-     * @param worldBorderSize world border diameter in blocks per chunk (use 16 for full chunk)
-     */
     public WorldBorderChunkHighlighter(int chunkRadius, double worldBorderSize) {
         this.chunkRadius = chunkRadius;
         this.worldBorderSize = worldBorderSize;
     }
 
-    /**
-     * Send fake world borders to a player around all chunks in a square radius from the center chunk.
-     * @param player The player to send packets to.
-     * @param centerLocation The central location (e.g., the loadstone block).
-     */
     public void sendBorders(Player player, Location centerLocation) {
         User user = PacketEvents.getAPI().getPlayerManager().getUser(player);
 
@@ -34,23 +27,26 @@ public class WorldBorderChunkHighlighter {
         int centerChunkX = centerChunk.getX();
         int centerChunkZ = centerChunk.getZ();
 
-        int minX = centerChunkX - chunkRadius;
-        int maxX = centerChunkX + chunkRadius;
-        int minZ = centerChunkZ - chunkRadius;
-        int maxZ = centerChunkZ + chunkRadius;
+        // Center the world border exactly on the player's block location (not chunk center)
+        double borderCenterX = centerLocation.getX() + 0.5;
+        double borderCenterZ = centerLocation.getZ() + 0.5;
 
-        for (int cx = minX; cx <= maxX; cx++) {
-            for (int cz = minZ; cz <= maxZ; cz++) {
-                double borderCenterX = (cx * 16) + 8;
-                double borderCenterZ = (cz * 16) + 8;
+        // The border should be sized to cover a (2*chunkRadius+1) x (2*chunkRadius+1) chunk area
+        double size = worldBorderSize * (chunkRadius * 2 + 1);
 
-                // Send CENTER and SIZE packets so the border is visible for the chunk
-                WrapperPlayServerWorldBorderCenter centerPacket = new WrapperPlayServerWorldBorderCenter(borderCenterX, borderCenterZ);
-                WrapperPlayServerWorldBorderSize sizePacket = new WrapperPlayServerWorldBorderSize(worldBorderSize);
+        // Send packets for visual border
+        user.sendPacket(new WrapperPlayServerWorldBorderCenter(borderCenterX, borderCenterZ));
+        user.sendPacket(new WrapperPlayServerWorldBorderSize(size));
 
-                user.sendPacket(centerPacket);
-                user.sendPacket(sizePacket);
+        // Reset after 5 seconds to default
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Default world border: center on world's spawn, size 29999984 (vanilla default)
+                Location spawn = player.getWorld().getSpawnLocation();
+                user.sendPacket(new WrapperPlayServerWorldBorderCenter(spawn.getX(), spawn.getZ()));
+                user.sendPacket(new WrapperPlayServerWorldBorderSize(29999984));
             }
-        }
+        }.runTaskLater(Bukkit.getPluginManager().getPlugin("LyttleChunkLoader"), 100L); // 100 ticks = 5 seconds
     }
 }
