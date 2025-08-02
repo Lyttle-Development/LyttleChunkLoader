@@ -2,6 +2,7 @@ package com.lyttledev.lyttlechunkloader.handlers;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
+import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
 import com.lyttledev.lyttleutils.types.Config;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -26,11 +27,13 @@ public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
     private final Config chunkConfig;
     private final ChunkRangeUtil chunkRangeUtil;
+    private final DoubleChunkLoaderEnforcer doubleLoaderEnforcer;
 
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
+        this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -80,12 +83,14 @@ public class ManagementHandler implements Listener {
             case Material.LODESTONE:
                 Block above = block.getLocation().clone().add(0, 1, 0).getBlock();
                 if (above.getType() == Material.LIGHTNING_ROD) {
+                    doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(block.getLocation(), player);
                     claimChunkAt(block.getLocation(), player);
                 }
                 break;
             case Material.LIGHTNING_ROD:
                 Block below = block.getLocation().clone().add(0, -1, 0).getBlock();
                 if (below.getType() == Material.LODESTONE) {
+                    doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(below.getLocation(), player);
                     claimChunkAt(below.getLocation(), player);
                 }
                 break;
@@ -102,19 +107,20 @@ public class ManagementHandler implements Listener {
             case LODESTONE:
                 Block above = location.clone().add(0, 1, 0).getBlock();
                 if (above.getType() == Material.LIGHTNING_ROD) {
-                    removeClaimAt(location, player);
+                    doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(location, player);
+                    // removeClaimAt(location, player); // handled by enforcer now
                 }
                 break;
             case LIGHTNING_ROD:
                 Block below = location.clone().add(0, -1, 0).getBlock();
                 if (below.getType() == Material.LODESTONE) {
-                    removeClaimAt(below.getLocation(), player);
+                    doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(below.getLocation(), player);
+                    // removeClaimAt(below.getLocation(), player); // handled by enforcer now
                 }
                 break;
         }
     }
 
-    // Detect click on lodestone or lightning rod and send the visualize if its a valid claim
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getClickedBlock() == null || event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) {
@@ -202,6 +208,7 @@ public class ManagementHandler implements Listener {
         player.playSound(lodestoneLocation, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1.0f, 1.0f);
     }
 
+    // removeClaimAt is NOT called from loader removal anymore, only used for non-double-loader cases if needed
     private void removeClaimAt(Location lodestoneLocation, Player player) {
         Block lodestone = lodestoneLocation.getBlock();
         Block rod = lodestoneLocation.clone().add(0, 1, 0).getBlock();
