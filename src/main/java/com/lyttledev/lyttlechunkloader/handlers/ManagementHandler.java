@@ -14,6 +14,8 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
 
 import java.util.*;
 
@@ -22,6 +24,8 @@ import java.util.*;
  * - Claims (single chunk) when lightning rod is placed on lodestone (rod must be directly above lodestone)
  * - Removes claim if lodestone or rod is broken/removed (single chunk)
  * - Delegates grid visualization to ChunkRangeUtil.
+ * - Manages actual chunk loading/unloading for redstone, commandblocks, etc.
+ * - Uses plugin tickets to force-load chunks for redstone/commandblocks.
  */
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
@@ -29,12 +33,18 @@ public class ManagementHandler implements Listener {
     private final ChunkRangeUtil chunkRangeUtil;
     private final DoubleChunkLoaderEnforcer doubleLoaderEnforcer;
 
+    // Track loaded chunks by world and coordinates for unloading correctly
+    private final Set<String> loadedChunkKeys = Collections.synchronizedSet(new HashSet<>());
+
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
         this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
+
+        // Load all claimed chunks when plugin loads
+        loadAllClaimedChunks();
     }
 
     private String getChunkKey(Location location) {
@@ -74,6 +84,90 @@ public class ManagementHandler implements Listener {
         chunkConfig.set(playerKey, chunkList);
     }
 
+    /**
+     * Loads all claimed chunks for all players (on plugin/server start).
+     * Uses plugin tickets to force-load for redstone/commandblock activity.
+     */
+    public void loadAllClaimedChunks() {
+        Map<String, Set<String>> allClaims = getAllClaimsByPlayer();
+        for (Set<String> chunkKeys : allClaims.values()) {
+            for (String chunkKey : chunkKeys) {
+                loadChunkAndSurrounding(chunkKey);
+            }
+        }
+    }
+
+    /**
+     * Unloads all chunks previously loaded by this plugin (on plugin/server disable).
+     * Removes plugin tickets.
+     */
+    public void unloadAllClaimedChunks() {
+        synchronized (loadedChunkKeys) {
+            for (String chunkKey : loadedChunkKeys) {
+                String[] parts = chunkKey.split(":");
+                if (parts.length < 3) continue;
+                String worldName = parts[0];
+                int cx = Integer.parseInt(parts[1]);
+                int cz = Integer.parseInt(parts[2]);
+                World world = Bukkit.getWorld(worldName);
+                if (world == null) continue;
+                // Remove plugin chunk ticket
+                world.removePluginChunkTicket(cx, cz, plugin);
+            }
+            loadedChunkKeys.clear();
+        }
+    }
+
+    /**
+     * Loads the chunk for the specified key and all surrounding area chunks using plugin tickets.
+     */
+    private void loadChunkAndSurrounding(String chunkKey) {
+        String[] parts = chunkKey.split(":");
+        if (parts.length < 3) return;
+        String worldName = parts[0];
+        int cx = Integer.parseInt(parts[1]);
+        int cz = Integer.parseInt(parts[2]);
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+
+        Set<String> areaKeys = chunkRangeUtil.getAreaChunkKeys(world, cx, cz);
+        for (String areaKey : areaKeys) {
+            String[] aParts = areaKey.split(":");
+            if (aParts.length < 3) continue;
+            int ax = Integer.parseInt(aParts[1]);
+            int az = Integer.parseInt(aParts[2]);
+            // Use plugin chunk tickets to force-load for redstone/commandblocks
+            world.addPluginChunkTicket(ax, az, plugin);
+            loadedChunkKeys.add(areaKey);
+        }
+    }
+
+    /**
+     * Unloads the chunk for the specified key and all surrounding area chunks.
+     * Removes plugin tickets.
+     */
+    private void unloadChunkAndSurrounding(String chunkKey) {
+        String[] parts = chunkKey.split(":");
+        if (parts.length < 3) return;
+        String worldName = parts[0];
+        int cx = Integer.parseInt(parts[1]);
+        int cz = Integer.parseInt(parts[2]);
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+
+        Set<String> areaKeys = chunkRangeUtil.getAreaChunkKeys(world, cx, cz);
+        for (String areaKey : areaKeys) {
+            String[] aParts = areaKey.split(":");
+            if (aParts.length < 3) continue;
+            int ax = Integer.parseInt(aParts[1]);
+            int az = Integer.parseInt(aParts[2]);
+            // Remove plugin chunk ticket if tracked
+            if (loadedChunkKeys.remove(areaKey)) {
+                world.removePluginChunkTicket(ax, az, plugin);
+            }
+        }
+    }
+
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Block block = event.getBlockPlaced();
@@ -108,14 +202,14 @@ public class ManagementHandler implements Listener {
                 Block above = location.clone().add(0, 1, 0).getBlock();
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(location, player);
-                    // removeClaimAt(location, player); // handled by enforcer now
+                    removeClaimAt(location, player); // <-- Now always called
                 }
                 break;
             case LIGHTNING_ROD:
                 Block below = location.clone().add(0, -1, 0).getBlock();
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(below.getLocation(), player);
-                    // removeClaimAt(below.getLocation(), player); // handled by enforcer now
+                    removeClaimAt(below.getLocation(), player); // <-- Now always called
                 }
                 break;
         }
@@ -144,6 +238,20 @@ public class ManagementHandler implements Listener {
                     sendVisualization(below.getLocation(), player);
                 }
                 break;
+        }
+    }
+
+    @EventHandler
+    public void onPluginEnable(PluginEnableEvent event) {
+        if (event.getPlugin().equals(plugin)) {
+            loadAllClaimedChunks();
+        }
+    }
+
+    @EventHandler
+    public void onPluginDisable(PluginDisableEvent event) {
+        if (event.getPlugin().equals(plugin)) {
+            unloadAllClaimedChunks();
         }
     }
 
@@ -192,15 +300,17 @@ public class ManagementHandler implements Listener {
         }
 
         boolean claimedNow = false;
+        String key = getChunkKey(lodestoneLocation);
         if (!alreadyClaimed) {
             // Only add the center chunk to player's claims
-            String key = getChunkKey(lodestoneLocation);
             if (!chunkList.contains(key)) {
                 chunkList.add(key);
                 claimedNow = true;
                 savePlayerChunks(player, chunkList);
             }
         }
+        // Always load the chunk and its area when claimed
+        loadChunkAndSurrounding(key);
 
         sendVisualization(lodestoneLocation, player);
 
@@ -208,28 +318,9 @@ public class ManagementHandler implements Listener {
         player.playSound(lodestoneLocation, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1.0f, 1.0f);
     }
 
-    // removeClaimAt is NOT called from loader removal anymore, only used for non-double-loader cases if needed
+    // Always called on loader removal now, ensures chunk unload and config update
     private void removeClaimAt(Location lodestoneLocation, Player player) {
-        Block lodestone = lodestoneLocation.getBlock();
-        Block rod = lodestoneLocation.clone().add(0, 1, 0).getBlock();
-
-        if (!(lodestone.getType() == Material.LODESTONE || rod.getType() == Material.LIGHTNING_ROD)) {
-            return;
-        }
-
-        List<String> chunkList = getPlayerChunks(player);
         String key = getChunkKey(lodestoneLocation);
-
-        // Only remove the center chunk
-        boolean found = chunkList.remove(key);
-
-        if (found) {
-            savePlayerChunks(player, chunkList);
-            player.sendMessage(Component.text("Chunk unloaded: ", NamedTextColor.GRAY)
-                    .append(Component.text(key, NamedTextColor.WHITE)));
-        }
-
-        // Satisfying break sound
-        player.playSound(lodestoneLocation, Sound.BLOCK_ANVIL_LAND, SoundCategory.MASTER, 1.0f, 1.0f);
+        unloadChunkAndSurrounding(key);
     }
 }
