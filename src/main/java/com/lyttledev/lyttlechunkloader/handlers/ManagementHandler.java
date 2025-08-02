@@ -1,7 +1,7 @@
 package com.lyttledev.lyttlechunkloader.handlers;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
-import com.lyttledev.lyttlechunkloader.utils.ChunkMessages;
+import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttleutils.types.Config;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -19,27 +19,26 @@ import java.util.*;
  * ManagementHandler for chunk claim/load logic.
  * - Claims (single chunk) when lightning rod is placed on lodestone (rod must be directly above lodestone)
  * - Removes claim if lodestone or rod is broken/removed (single chunk)
- * - Delegates grid visualization to ChunkMessages.
+ * - Delegates grid visualization to ChunkRangeUtil.
  */
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
     private final Config chunkConfig;
-    private final ChunkMessages visualizer;
+    private final ChunkRangeUtil chunkRangeUtil;
 
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
-        this.visualizer = new ChunkMessages(4);
+        this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
     private String getChunkKey(Location location) {
-        Chunk chunk = location.getChunk();
-        return chunk.getWorld().getName() + ":" + chunk.getX() + ":" + chunk.getZ();
+        return chunkRangeUtil.getChunkKey(location);
     }
 
     private String getChunkKey(World world, int cx, int cz) {
-        return world.getName() + ":" + cx + ":" + cz;
+        return chunkRangeUtil.getChunkKey(world, cx, cz);
     }
 
     private String getPlayerKey(Player player) {
@@ -116,15 +115,16 @@ public class ManagementHandler implements Listener {
         List<String> chunkList = getPlayerChunks(player);
         boolean alreadyClaimed = false;
 
-        // Still check the 3x3 area to see if any chunks are already claimed
-        for (int dz = -1; dz <= 1; dz++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                int cx = centerChunk.getX() + dx;
-                int cz = centerChunk.getZ() + dz;
-                String key = getChunkKey(lodestoneLocation.getWorld(), cx, cz);
-                if (chunkList.contains(key)) {
-                    alreadyClaimed = true;
-                }
+        // Check if any chunk in the area is already claimed by this player
+        Set<String> areaKeys = chunkRangeUtil.getAreaChunkKeys(
+                lodestoneLocation.getWorld(),
+                centerChunk.getX(),
+                centerChunk.getZ()
+        );
+        for (String key : areaKeys) {
+            if (chunkList.contains(key)) {
+                alreadyClaimed = true;
+                break;
             }
         }
 
@@ -139,7 +139,7 @@ public class ManagementHandler implements Listener {
             }
         }
 
-        visualizer.sendVisualizer(
+        chunkRangeUtil.sendChunkGridVisualizer(
             lodestoneLocation,
             player,
             getPlayerKey(player),
