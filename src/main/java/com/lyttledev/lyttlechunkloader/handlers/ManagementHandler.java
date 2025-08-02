@@ -12,6 +12,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerInteractEvent;
 
 import java.util.*;
 
@@ -75,11 +76,19 @@ public class ManagementHandler implements Listener {
         Block block = event.getBlockPlaced();
         Player player = event.getPlayer();
 
-        if (block.getType() == Material.LIGHTNING_ROD) {
-            Block below = block.getLocation().clone().add(0, -1, 0).getBlock();
-            if (below.getType() == Material.LODESTONE) {
-                claimChunkAt(below.getLocation(), player);
-            }
+        switch (block.getType()) {
+            case Material.LODESTONE:
+                Block above = block.getLocation().clone().add(0, 1, 0).getBlock();
+                if (above.getType() == Material.LIGHTNING_ROD) {
+                    claimChunkAt(block.getLocation(), player);
+                }
+                break;
+            case Material.LIGHTNING_ROD:
+                Block below = block.getLocation().clone().add(0, -1, 0).getBlock();
+                if (below.getType() == Material.LODESTONE) {
+                    claimChunkAt(below.getLocation(), player);
+                }
+                break;
         }
     }
 
@@ -89,16 +98,64 @@ public class ManagementHandler implements Listener {
         Location location = block.getLocation();
         Player player = event.getPlayer();
 
-        if (block.getType() == Material.LODESTONE) {
-            Block above = location.clone().add(0, 1, 0).getBlock();
-            if (above.getType() == Material.LIGHTNING_ROD) {
-                removeClaimAt(location, player);
-            }
-        } else if (block.getType() == Material.LIGHTNING_ROD) {
-            Block below = location.clone().add(0, -1, 0).getBlock();
-            if (below.getType() == Material.LODESTONE) {
-                removeClaimAt(below.getLocation(), player);
-            }
+        switch (block.getType()) {
+            case LODESTONE:
+                Block above = location.clone().add(0, 1, 0).getBlock();
+                if (above.getType() == Material.LIGHTNING_ROD) {
+                    removeClaimAt(location, player);
+                }
+                break;
+            case LIGHTNING_ROD:
+                Block below = location.clone().add(0, -1, 0).getBlock();
+                if (below.getType() == Material.LODESTONE) {
+                    removeClaimAt(below.getLocation(), player);
+                }
+                break;
+        }
+    }
+
+    // Detect click on lodestone or lightning rod and send the visualize if its a valid claim
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getClickedBlock() == null || event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+
+        Block block = event.getClickedBlock();
+        Player player = event.getPlayer();
+        Location lodestoneLocation = block.getLocation();
+
+        switch (block.getType()) {
+            case LODESTONE:
+                Block above = lodestoneLocation.clone().add(0, 1, 0).getBlock();
+                if (above.getType() == Material.LIGHTNING_ROD) {
+                    sendVisualization(lodestoneLocation, player);
+                }
+                break;
+            case LIGHTNING_ROD:
+                Block below = lodestoneLocation.clone().add(0, -1, 0).getBlock();
+                if (below.getType() == Material.LODESTONE) {
+                    sendVisualization(below.getLocation(), player);
+                }
+                break;
+        }
+    }
+
+    private void sendVisualization(Location lodestoneLocation, Player player) {
+        String key = getChunkKey(lodestoneLocation);
+        List<String> chunkList = getPlayerChunks(player);
+
+        if (chunkList.contains(key)) {
+            chunkRangeUtil.sendChunkGridVisualizer(
+                lodestoneLocation,
+                player,
+                getPlayerKey(player),
+                getAllClaimsByPlayer(),
+                key
+            );
+            plugin.borderHighlighter.sendBorders(player, lodestoneLocation, 2, 100);
+        } else {
+            player.sendMessage(Component.text("This chunk is not claimed by you.", NamedTextColor.RED));
         }
     }
 
@@ -139,14 +196,10 @@ public class ManagementHandler implements Listener {
             }
         }
 
-        chunkRangeUtil.sendChunkGridVisualizer(
-            lodestoneLocation,
-            player,
-            getPlayerKey(player),
-            getAllClaimsByPlayer(),
-            claimedNow ? getChunkKey(lodestoneLocation) : null
-        );
-        plugin.borderHighlighter.sendBorders(player, lodestoneLocation, 2, 100);
+        sendVisualization(lodestoneLocation, player);
+
+        // Satisfying level-up sound
+        player.playSound(lodestoneLocation, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1.0f, 1.0f);
     }
 
     private void removeClaimAt(Location lodestoneLocation, Player player) {
@@ -168,5 +221,8 @@ public class ManagementHandler implements Listener {
             player.sendMessage(Component.text("Chunk unloaded: ", NamedTextColor.GRAY)
                     .append(Component.text(key, NamedTextColor.WHITE)));
         }
+
+        // Satisfying break sound
+        player.playSound(lodestoneLocation, Sound.BLOCK_ANVIL_LAND, SoundCategory.MASTER, 1.0f, 1.0f);
     }
 }
