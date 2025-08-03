@@ -32,7 +32,7 @@ public class ManagementHandler implements Listener {
     private final ChunkRangeUtil chunkRangeUtil;
     private final DoubleChunkLoaderEnforcer doubleLoaderEnforcer;
 
-    public ManagementHandler(LyttleChunkLoader plugin, PaymentHandler paymentHandler) {
+    public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
@@ -111,14 +111,12 @@ public class ManagementHandler implements Listener {
                 Block above = location.clone().add(0, 1, 0).getBlock();
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(location, player);
-                    removeClaimAt(location, player);
                 }
                 break;
             case LIGHTNING_ROD:
                 Block below = location.clone().add(0, -1, 0).getBlock();
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(below.getLocation(), player);
-                    removeClaimAt(below.getLocation(), player);
                 }
                 break;
         }

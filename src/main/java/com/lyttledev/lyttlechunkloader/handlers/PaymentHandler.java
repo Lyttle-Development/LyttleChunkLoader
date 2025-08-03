@@ -3,14 +3,16 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttleutils.types.Config;
+import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.server.PluginDisableEvent;
-import org.bukkit.event.server.PluginEnableEvent;
 
 import java.util.*;
 
@@ -18,6 +20,7 @@ import java.util.*;
  * Handles chunk loading and unloading logic for all claims.
  * - Loads/unloads chunks using plugin tickets.
  * - Tracks loaded chunk keys.
+ * - Handles payment for chunk loader duty using Vault.
  */
 public class PaymentHandler implements Listener {
     private final LyttleChunkLoader plugin;
@@ -26,14 +29,17 @@ public class PaymentHandler implements Listener {
     private final Set<String> loadedChunkKeys = Collections.synchronizedSet(new HashSet<>());
     private final Set<UUID> loadedPlayers = Collections.synchronizedSet(new HashSet<>());
     private static final int PAYMENT_CHECK_INTERVAL = 30 * 60; // 30 minutes in seconds
-
+    private static final double DUTY_PER_CHUNK = 30.0;
+    private final Economy economy;
 
     public PaymentHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
+        this.economy = plugin.economyImplementer; // Ensure plugin has a getEconomy() returning net.milkbowl.vault.economy.Economy
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
-        Bukkit.getScheduler().runTaskTimer(plugin, this::checkPayments, 20L, 20L); // Check payments every second
+        // Schedule payment checks every PAYMENT_CHECK_INTERVAL seconds
+        Bukkit.getScheduler().runTaskTimer(plugin, this::checkPayments, 20L, PAYMENT_CHECK_INTERVAL * 20L);
     }
 
     @EventHandler
@@ -45,12 +51,10 @@ public class PaymentHandler implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        UUID playetUUID = event.getPlayer().getUniqueId();
-        List<String> playerChunks = chunkConfig.getStringList(playetUUID.toString());
+        UUID playerUUID = event.getPlayer().getUniqueId();
+        List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
         if (playerChunks == null || playerChunks.isEmpty()) return;
-        loadedPlayers.add(playetUUID);
-
-
+        loadedPlayers.add(playerUUID);
     }
 
     @EventHandler
@@ -66,8 +70,48 @@ public class PaymentHandler implements Listener {
         }
     }
 
+    /**
+     * Checks payment for each player with claimed chunks.
+     * If a player cannot pay, their chunks are deleted.
+     */
     private void checkPayments() {
+        Map<String, List<String>> allClaims = getAllPlayerClaims();
+        for (Map.Entry<String, List<String>> entry : allClaims.entrySet()) {
+            String playerKey = entry.getKey();
+            UUID playerUUID;
+            try {
+                playerUUID = UUID.fromString(playerKey);
+            } catch (IllegalArgumentException e) {
+                continue; // Skip invalid UUID
+            }
+            List<String> chunks = entry.getValue();
+            int chunkCount = chunks.size();
+            double totalDuty = DUTY_PER_CHUNK * chunkCount;
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerUUID);
 
+            if (economy.has(offlinePlayer, totalDuty)) {
+                if (loadedPlayers.contains(playerUUID)) {
+                    economy.withdrawPlayer(offlinePlayer, totalDuty);
+                    for (String chunkKey : chunks) {
+                        if (!loadedChunkKeys.contains(chunkKey)) {
+                            loadChunkAndSurrounding(chunkKey);
+                        }
+                    }
+                }
+            } else {
+                // Not enough funds: remove all claims and unload chunks
+                for (String chunkKey : chunks) {
+                    unloadChunkAndSurrounding(chunkKey);
+                }
+                chunkConfig.set(playerKey, new ArrayList<>());
+                if (offlinePlayer.isOnline()) {
+                    Player player = offlinePlayer.getPlayer();
+                    if (player != null) {
+                        player.sendMessage("§cYour chunk loader claims have been removed due to insufficient funds.");
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -141,17 +185,21 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    private Map<String, Set<String>> getAllClaimsByPlayer() {
-        Map<String, Set<String>> map = new HashMap<>();
+    /**
+     * Returns a map of player UUID (String) to a list of their directly claimed chunk keys.
+     * Only the chunks they actually own, not all loaded chunks in the config.
+     */
+    private Map<String, List<String>> getAllPlayerClaims() {
+        Map<String, List<String>> claims = new HashMap<>();
         String[] allPlayers = chunkConfig.getKeys("");
         if (allPlayers != null) {
             for (String playerKey : allPlayers) {
-                List<String> chunks = chunkConfig.getStringList(playerKey);
-                if (chunks != null && !chunks.isEmpty()) {
-                    map.put(playerKey, new HashSet<>(chunks));
+                List<String> chunkList = chunkConfig.getStringList(playerKey);
+                if (chunkList != null && !chunkList.isEmpty()) {
+                    claims.put(playerKey, new ArrayList<>(chunkList));
                 }
             }
         }
-        return map;
+        return claims;
     }
 }

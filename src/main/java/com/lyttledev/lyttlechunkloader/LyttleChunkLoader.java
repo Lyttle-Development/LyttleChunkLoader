@@ -10,12 +10,15 @@ import com.lyttledev.lyttleutils.utils.communication.Console;
 import com.lyttledev.lyttleutils.utils.communication.Message;
 import com.lyttledev.lyttleutils.utils.storage.GlobalConfig;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.milkbowl.vault.economy.Economy;
+import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
 
 public final class LyttleChunkLoader extends JavaPlugin {
+    public Economy economyImplementer;
     public Configs config;
     public Console console;
     public Message message;
@@ -25,6 +28,12 @@ public final class LyttleChunkLoader extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        if (!setupEconomy()) {
+            getLogger().severe("Vault or an economy plugin is not installed!");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         saveDefaultConfig();
         // Setup config after creating the configs
         this.config = new Configs(this);
@@ -54,6 +63,20 @@ public final class LyttleChunkLoader extends JavaPlugin {
         } catch (IOException e) {
             getLogger().warning("Failed to export available_materials.txt: " + e.getMessage());
         }
+    }
+
+    private boolean setupEconomy() {
+        if (getServer().getPluginManager().getPlugin("Vault") == null) {
+            return false;
+        }
+
+        RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
+        if (rsp == null) {
+            return false;
+        }
+
+        economyImplementer = rsp.getProvider();
+        return economyImplementer != null;
     }
 
     @Override
