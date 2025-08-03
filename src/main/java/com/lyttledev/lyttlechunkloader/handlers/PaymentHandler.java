@@ -78,30 +78,28 @@ public class PaymentHandler implements Listener {
     /**
      * Called by ManagementHandler on creation.
      *
-     * Attempts to charge once. If successful, chunk is loaded and payment process started if not running.
-     * Returns true if payment succeeded, false if not (caller should undo claim if false).
+     * If `isFirstLoader` is true, charges only for 1 chunk, not for the whole (prevents double charge).
+     * Returns true if payment succeeded, false otherwise.
      */
-    public boolean chargeAndStartProcessOnCreate(Player player, String chunkKey) {
+    public boolean chargeAndStartProcessOnCreate(Player player, String chunkKey, boolean isFirstLoader) {
         UUID playerUUID = player.getUniqueId();
         List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
         if (playerChunks == null) playerChunks = new ArrayList<>();
         int chunkCount = playerChunks.size();
-        double totalDuty = DUTY_PER_CHUNK * chunkCount;
         OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerUUID);
 
-        // Only charge for the new state (after claim), avoid charging before claim was added
-        if (chunkCount > 0 && !economy.has(offlinePlayer, totalDuty)) {
+        // Only charge for the newly claimed chunk (not all) on create, only if this is the first loader (chunkCount==1)
+        double chargeAmount = isFirstLoader && chunkCount == 1 ? DUTY_PER_CHUNK : 0.0;
+        if (chargeAmount > 0.0 && !economy.has(offlinePlayer, chargeAmount)) {
             return false;
         }
-        // Withdraw for only the new chunk, not all
-        if (chunkCount > 0) {
-            double singleDuty = DUTY_PER_CHUNK;
-            if (!economy.withdrawPlayer(offlinePlayer, singleDuty).transactionSuccess()) {
+        if (chargeAmount > 0.0) {
+            if (!economy.withdrawPlayer(offlinePlayer, chargeAmount).transactionSuccess()) {
                 return false;
             }
             Player online = offlinePlayer.getPlayer();
             if (online != null && online.isOnline()) {
-                online.sendMessage("§aChunk loader fee of §e" + singleDuty + "§a has been paid for 1 chunk.");
+                online.sendMessage("§aChunk loader fee of §e" + chargeAmount + "§a has been paid for 1 chunk.");
             }
         }
 
@@ -128,11 +126,27 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Ensures the payment process (periodic task) is running for the player if they have at least 1 chunk loader.
-     * Will NOT start multiple timers for the same player.
-     * Used on join and on new chunk loader creation.
-     */
+    public void unloadChunkAndSurrounding(String chunkKey) {
+        String[] parts = chunkKey.split(":");
+        if (parts.length < 3) return;
+        String worldName = parts[0];
+        int cx = Integer.parseInt(parts[1]);
+        int cz = Integer.parseInt(parts[2]);
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+
+        Set<String> areaKeys = chunkRangeUtil.getAreaChunkKeys(world, cx, cz);
+        for (String areaKey : areaKeys) {
+            String[] aParts = areaKey.split(":");
+            if (aParts.length < 3) continue;
+            int ax = Integer.parseInt(aParts[1]);
+            int az = Integer.parseInt(aParts[2]);
+            if (loadedChunkKeys.remove(areaKey)) {
+                world.removePluginChunkTicket(ax, az, plugin);
+            }
+        }
+    }
+
     public void ensurePaymentProcess(Player player) {
         UUID playerUUID = player.getUniqueId();
         List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
@@ -140,18 +154,12 @@ public class PaymentHandler implements Listener {
             cancelPaymentTask(playerUUID);
             return;
         }
-        if (playerPaymentTasks.containsKey(playerUUID)) return; // Already running
+        if (playerPaymentTasks.containsKey(playerUUID)) return;
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> checkPaymentsForPlayer(playerUUID), PAYMENT_CHECK_INTERVAL * 20L, PAYMENT_CHECK_INTERVAL * 20L);
         playerPaymentTasks.put(playerUUID, task);
         checkPaymentsForPlayer(playerUUID);
     }
 
-    /**
-     * Checks payment for a single player with claimed chunks.
-     * If a player cannot pay, their chunks are deleted, unloaded, payment task is canceled,
-     * and all corresponding double chunk loaders are dropped in the world.
-     * Only charges once per interval, no double charge.
-     */
     private void checkPaymentsForPlayer(UUID playerUUID) {
         List<String> chunks = chunkConfig.getStringList(playerUUID.toString());
         if (chunks == null || chunks.isEmpty()) {
@@ -169,7 +177,6 @@ public class PaymentHandler implements Listener {
                 if (player != null && player.isOnline()) {
                     player.sendMessage("§aChunk loader fee of §e" + totalDuty + "§a has been paid for " + chunkCount + " chunks.");
                 }
-
                 for (String chunkKey : chunks) {
                     loadChunkAndSurrounding(chunkKey);
                 }
@@ -190,10 +197,6 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Drops the double chunk loader (lodestone + lightning rod) at the physical location for the given chunkKey, if found.
-     * Uses DoubleChunkLoaderEnforcer logic to ensure correct structure and drops.
-     */
     private void dropDoubleChunkLoaderAt(String chunkKey) {
         String[] parts = chunkKey.split(":");
         if (parts.length < 3) return;
@@ -271,27 +274,6 @@ public class PaymentHandler implements Listener {
             int az = Integer.parseInt(aParts[2]);
             world.addPluginChunkTicket(ax, az, plugin);
             loadedChunkKeys.add(areaKey);
-        }
-    }
-
-    public void unloadChunkAndSurrounding(String chunkKey) {
-        String[] parts = chunkKey.split(":");
-        if (parts.length < 3) return;
-        String worldName = parts[0];
-        int cx = Integer.parseInt(parts[1]);
-        int cz = Integer.parseInt(parts[2]);
-        World world = Bukkit.getWorld(worldName);
-        if (world == null) return;
-
-        Set<String> areaKeys = chunkRangeUtil.getAreaChunkKeys(world, cx, cz);
-        for (String areaKey : areaKeys) {
-            String[] aParts = areaKey.split(":");
-            if (aParts.length < 3) continue;
-            int ax = Integer.parseInt(aParts[1]);
-            int az = Integer.parseInt(aParts[2]);
-            if (loadedChunkKeys.remove(areaKey)) {
-                world.removePluginChunkTicket(ax, az, plugin);
-            }
         }
     }
 
