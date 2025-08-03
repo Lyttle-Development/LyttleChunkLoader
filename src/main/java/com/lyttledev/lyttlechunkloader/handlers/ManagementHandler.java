@@ -81,7 +81,7 @@ public class ManagementHandler implements Listener {
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(block.getLocation(), player);
                     claimChunkAt(block.getLocation(), player);
-                    paymentHandler.ensurePaymentProcess(player); // Only starts if not already running and player has at least 1 chunk
+                    paymentHandler.onPlayerChunkLoaderCreate(player);
                 }
                 break;
             case Material.LIGHTNING_ROD:
@@ -89,7 +89,7 @@ public class ManagementHandler implements Listener {
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(below.getLocation(), player);
                     claimChunkAt(below.getLocation(), player);
-                    paymentHandler.ensurePaymentProcess(player); // Only starts if not already running and player has at least 1 chunk
+                    paymentHandler.onPlayerChunkLoaderCreate(player);
                 }
                 break;
         }

@@ -52,13 +52,14 @@ public class PaymentHandler implements Listener {
         Player player = event.getPlayer();
         UUID playerUUID = player.getUniqueId();
         List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
-        if (playerChunks == null || playerChunks.isEmpty()) return;
-        loadedPlayers.add(playerUUID);
-        for (String chunkKey : playerChunks) {
-            loadChunkAndSurrounding(chunkKey);
+        if (playerChunks != null && !playerChunks.isEmpty()) {
+            loadedPlayers.add(playerUUID);
+            for (String chunkKey : playerChunks) {
+                loadChunkAndSurrounding(chunkKey);
+            }
+            ensurePaymentProcess(player);
+            player.sendMessage("§aWelcome back! Your chunk loaders have been reloaded.");
         }
-        player.sendMessage("§aYour claimed chunks have been loaded. Payment will be checked every " + (PAYMENT_CHECK_INTERVAL / 60) + " minutes.");
-        ensurePaymentProcess(player);
     }
 
     @EventHandler
@@ -72,6 +73,17 @@ public class PaymentHandler implements Listener {
             }
         }
         cancelPaymentTask(playerUUID);
+    }
+
+    public void onPlayerChunkLoaderCreate(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        ensurePaymentProcess(player);
+        List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
+        if (playerChunks == null || playerChunks.isEmpty()) return;
+        loadedPlayers.add(playerUUID);
+        for (String chunkKey : playerChunks) {
+            loadChunkAndSurrounding(chunkKey);
+        }
     }
 
     /**
@@ -114,6 +126,10 @@ public class PaymentHandler implements Listener {
                 Player player = offlinePlayer.getPlayer();
                 if (player != null && player.isOnline()) {
                     player.sendMessage("§aChunk loader fee of §e" + totalDuty + "§a has been paid for " + chunkCount + " chunks.");
+                }
+
+                for (String chunkKey : chunks) {
+                    loadChunkAndSurrounding(chunkKey);
                 }
             }
         } else {
