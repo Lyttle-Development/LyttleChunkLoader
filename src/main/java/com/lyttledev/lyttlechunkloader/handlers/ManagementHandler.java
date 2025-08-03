@@ -19,13 +19,6 @@ import org.bukkit.event.server.PluginDisableEvent;
 
 import java.util.*;
 
-/**
- * ManagementHandler for chunk claim/load logic.
- * - Handles claims (single chunk) when lightning rod is placed on lodestone (rod must be directly above lodestone)
- * - Removes claim if lodestone or rod is broken/removed (single chunk)
- * - Delegates grid visualization to ChunkRangeUtil.
- * - Delegates chunk loading/unloading logic to PaymentHandler.
- */
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
     private final Config chunkConfig;

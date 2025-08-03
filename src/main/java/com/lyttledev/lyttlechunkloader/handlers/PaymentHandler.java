@@ -2,6 +2,7 @@ package com.lyttledev.lyttlechunkloader.handlers;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
+import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
 import com.lyttledev.lyttleutils.types.Config;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
@@ -17,13 +18,6 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
 
-/**
- * Handles chunk loading and unloading logic for all claims.
- * - Loads/unloads chunks using plugin tickets.
- * - Tracks loaded chunk keys.
- * - Handles payment for chunk loader duty using Vault.
- * - Each player has an individual payment timer, started on join, canceled on leave.
- */
 public class PaymentHandler implements Listener {
     private final LyttleChunkLoader plugin;
     private final Config chunkConfig;
@@ -34,12 +28,14 @@ public class PaymentHandler implements Listener {
     private static final double DUTY_PER_CHUNK = 30.0;
     private final Economy economy;
     private final Map<UUID, BukkitTask> playerPaymentTasks = Collections.synchronizedMap(new HashMap<>());
+    private final DoubleChunkLoaderEnforcer doubleLoaderEnforcer;
 
     public PaymentHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
         this.economy = plugin.economyImplementer;
+        this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1); // radius=1, adjust if needed
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -90,8 +86,8 @@ public class PaymentHandler implements Listener {
 
     /**
      * Checks payment for a single player with claimed chunks.
-     * If a player cannot pay, their chunks are deleted and unloaded, and payment task is canceled.
-     * Player is notified of each event.
+     * If a player cannot pay, their chunks are deleted and unloaded, payment task is canceled,
+     * and all corresponding double chunk loaders are dropped in the world.
      */
     private void checkPaymentsForPlayer(UUID playerUUID) {
         List<String> chunks = chunkConfig.getStringList(playerUUID.toString());
@@ -109,16 +105,74 @@ public class PaymentHandler implements Listener {
                 }
             }
         } else {
-            // Not enough funds: remove all claims and unload chunks
+            // Not enough funds: remove all claims, unload chunks, and remove & drop chunk loaders
             for (String chunkKey : chunks) {
                 unloadChunkAndSurrounding(chunkKey);
+                // Remove and drop the physical double chunk loader structure for this chunk if present
+                dropDoubleChunkLoaderAt(chunkKey);
             }
             chunkConfig.set(playerUUID.toString(), new ArrayList<>());
             Player player = offlinePlayer.getPlayer();
             if (player != null && player.isOnline()) {
-                player.sendMessage("§cYour chunk loader claims have been removed due to insufficient funds.");
+                player.sendMessage("§cYour chunk loader claims have been removed due to insufficient funds. The chunk loaders were dropped at their locations.");
+                player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, org.bukkit.SoundCategory.MASTER, 1.0f, 1.0f); // Danger sound
             }
             cancelPaymentTask(playerUUID);
+        }
+    }
+
+    /**
+     * Drops the double chunk loader (lodestone + lightning rod) at the physical location for the given chunkKey, if found.
+     * Uses DoubleChunkLoaderEnforcer logic to ensure correct structure and drops.
+     */
+    private void dropDoubleChunkLoaderAt(String chunkKey) {
+        String[] parts = chunkKey.split(":");
+        if (parts.length < 3) return;
+        String worldName = parts[0];
+        int cx = Integer.parseInt(parts[1]);
+        int cz = Integer.parseInt(parts[2]);
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+
+        // Scan all y and chunk-local x/z for a double loader in this chunk (as in DoubleChunkLoaderEnforcer)
+        for (int y = world.getMinHeight(); y < world.getMaxHeight() - 1; y++) {
+            for (int lx = 0; lx < 16; lx++) {
+                for (int lz = 0; lz < 16; lz++) {
+                    int bx = (cx << 4) + lx;
+                    int bz = (cz << 4) + lz;
+                    org.bukkit.Location base = new org.bukkit.Location(world, bx, y, bz);
+                    if (isPhysicalDoubleLoader(base)) {
+                        breakDoubleChunkLoader(base, true);
+                        return; // Only one per chunk, stop after found
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns true if the given Location is a Lodestone with Lightning Rod directly above.
+     */
+    private boolean isPhysicalDoubleLoader(org.bukkit.Location lodestoneLoc) {
+        org.bukkit.block.Block base = lodestoneLoc.getBlock();
+        org.bukkit.block.Block above = lodestoneLoc.clone().add(0, 1, 0).getBlock();
+        return base.getType() == org.bukkit.Material.LODESTONE && above.getType() == org.bukkit.Material.LIGHTNING_ROD;
+    }
+
+    /**
+     * Breaks the DOUBLE chunk loader at lodestoneLoc. Optionally drops items.
+     */
+    private void breakDoubleChunkLoader(org.bukkit.Location lodestoneLoc, boolean dropItems) {
+        org.bukkit.block.Block base = lodestoneLoc.getBlock();
+        org.bukkit.block.Block above = lodestoneLoc.clone().add(0, 1, 0).getBlock();
+
+        if (base.getType() == org.bukkit.Material.LODESTONE) {
+            if (dropItems) base.getWorld().dropItemNaturally(base.getLocation(), new org.bukkit.inventory.ItemStack(org.bukkit.Material.LODESTONE));
+            base.setType(org.bukkit.Material.AIR);
+        }
+        if (above.getType() == org.bukkit.Material.LIGHTNING_ROD) {
+            if (dropItems) above.getWorld().dropItemNaturally(above.getLocation(), new org.bukkit.inventory.ItemStack(org.bukkit.Material.LIGHTNING_ROD));
+            above.setType(org.bukkit.Material.AIR);
         }
     }
 
