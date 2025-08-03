@@ -3,7 +3,6 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
-import com.lyttledev.lyttlechunkloader.handlers.PaymentHandler;
 import com.lyttledev.lyttleutils.types.Config;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -15,8 +14,6 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.server.PluginEnableEvent;
-import org.bukkit.event.server.PluginDisableEvent;
 
 import java.util.*;
 
@@ -25,12 +22,14 @@ public class ManagementHandler implements Listener {
     private final Config chunkConfig;
     private final ChunkRangeUtil chunkRangeUtil;
     private final DoubleChunkLoaderEnforcer doubleLoaderEnforcer;
+    private final PaymentHandler paymentHandler;
 
     public ManagementHandler(LyttleChunkLoader plugin) {
         this.plugin = plugin;
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
         this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1);
+        this.paymentHandler = plugin.paymentHandler; // Assumes paymentHandler is set on plugin
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -82,7 +81,7 @@ public class ManagementHandler implements Listener {
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(block.getLocation(), player);
                     claimChunkAt(block.getLocation(), player);
-                    plugin.paymentHandler.startPaymentProcess(player); // Start payment process on create
+                    paymentHandler.ensurePaymentProcess(player); // Only starts if not already running and player has at least 1 chunk
                 }
                 break;
             case Material.LIGHTNING_ROD:
@@ -90,7 +89,7 @@ public class ManagementHandler implements Listener {
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(below.getLocation(), player);
                     claimChunkAt(below.getLocation(), player);
-                    plugin.paymentHandler.startPaymentProcess(player); // Start payment process on create
+                    paymentHandler.ensurePaymentProcess(player); // Only starts if not already running and player has at least 1 chunk
                 }
                 break;
         }

@@ -3,8 +3,6 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
-import com.lyttledev.lyttlechunkloader.handlers.ManagementHandler;
-import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
 import com.lyttledev.lyttleutils.types.Config;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
@@ -60,7 +58,7 @@ public class PaymentHandler implements Listener {
             loadChunkAndSurrounding(chunkKey);
         }
         player.sendMessage("§aYour claimed chunks have been loaded. Payment will be checked every " + (PAYMENT_CHECK_INTERVAL / 60) + " minutes.");
-        startPaymentProcess(player);
+        ensurePaymentProcess(player);
     }
 
     @EventHandler
@@ -77,12 +75,18 @@ public class PaymentHandler implements Listener {
     }
 
     /**
-     * Starts the payment process (periodic task) for the player if not already running.
+     * Ensures the payment process (periodic task) is running for the player if they have at least 1 chunk loader.
+     * Will NOT start multiple timers for the same player.
      * Used on join and on new chunk loader creation.
      */
-    public void startPaymentProcess(Player player) {
+    public void ensurePaymentProcess(Player player) {
         UUID playerUUID = player.getUniqueId();
-        cancelPaymentTask(playerUUID); // cancel any existing
+        List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
+        if (playerChunks == null || playerChunks.isEmpty()) {
+            cancelPaymentTask(playerUUID);
+            return;
+        }
+        if (playerPaymentTasks.containsKey(playerUUID)) return; // Already running
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> checkPaymentsForPlayer(playerUUID), PAYMENT_CHECK_INTERVAL * 20L, PAYMENT_CHECK_INTERVAL * 20L);
         playerPaymentTasks.put(playerUUID, task);
         checkPaymentsForPlayer(playerUUID);
@@ -92,10 +96,14 @@ public class PaymentHandler implements Listener {
      * Checks payment for a single player with claimed chunks.
      * If a player cannot pay, their chunks are deleted, unloaded, payment task is canceled,
      * and all corresponding double chunk loaders are dropped in the world.
+     * Only charges once per interval, no double charge.
      */
     private void checkPaymentsForPlayer(UUID playerUUID) {
         List<String> chunks = chunkConfig.getStringList(playerUUID.toString());
-        if (chunks == null || chunks.isEmpty()) return;
+        if (chunks == null || chunks.isEmpty()) {
+            cancelPaymentTask(playerUUID); // Defensive: clean up unnecessary task
+            return;
+        }
         int chunkCount = chunks.size();
         double totalDuty = DUTY_PER_CHUNK * chunkCount;
         OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerUUID);
