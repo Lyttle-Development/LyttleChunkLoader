@@ -24,7 +24,7 @@ public class PaymentHandler implements Listener {
     private final ChunkRangeUtil chunkRangeUtil;
     private final Set<String> loadedChunkKeys = Collections.synchronizedSet(new HashSet<>());
     private final Set<UUID> loadedPlayers = Collections.synchronizedSet(new HashSet<>());
-    private static final int PAYMENT_CHECK_INTERVAL = 10; //30 * 60; // 30 minutes in seconds
+    private static final int PAYMENT_CHECK_INTERVAL = 10;
     private static final double DUTY_PER_CHUNK = 30.0;
     private final Economy economy;
     private final Map<UUID, BukkitTask> playerPaymentTasks = Collections.synchronizedMap(new HashMap<>());
@@ -35,7 +35,7 @@ public class PaymentHandler implements Listener {
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
         this.economy = plugin.economyImplementer;
-        this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1); // radius=1, adjust if needed
+        this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -75,14 +75,56 @@ public class PaymentHandler implements Listener {
         cancelPaymentTask(playerUUID);
     }
 
-    public void onPlayerChunkLoaderCreate(Player player) {
+    /**
+     * Called by ManagementHandler on creation.
+     *
+     * Attempts to charge once. If successful, chunk is loaded and payment process started if not running.
+     * Returns true if payment succeeded, false if not (caller should undo claim if false).
+     */
+    public boolean chargeAndStartProcessOnCreate(Player player, String chunkKey) {
         UUID playerUUID = player.getUniqueId();
-        ensurePaymentProcess(player);
         List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
-        if (playerChunks == null || playerChunks.isEmpty()) return;
+        if (playerChunks == null) playerChunks = new ArrayList<>();
+        int chunkCount = playerChunks.size();
+        double totalDuty = DUTY_PER_CHUNK * chunkCount;
+        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerUUID);
+
+        // Only charge for the new state (after claim), avoid charging before claim was added
+        if (chunkCount > 0 && !economy.has(offlinePlayer, totalDuty)) {
+            return false;
+        }
+        // Withdraw for only the new chunk, not all
+        if (chunkCount > 0) {
+            double singleDuty = DUTY_PER_CHUNK;
+            if (!economy.withdrawPlayer(offlinePlayer, singleDuty).transactionSuccess()) {
+                return false;
+            }
+            Player online = offlinePlayer.getPlayer();
+            if (online != null && online.isOnline()) {
+                online.sendMessage("§aChunk loader fee of §e" + singleDuty + "§a has been paid for 1 chunk.");
+            }
+        }
+
         loadedPlayers.add(playerUUID);
-        for (String chunkKey : playerChunks) {
-            loadChunkAndSurrounding(chunkKey);
+        loadChunkAndSurrounding(chunkKey);
+        ensurePaymentProcess(player);
+
+        return true;
+    }
+
+    /**
+     * Called by ManagementHandler on removal.
+     *
+     * Unloads the chunk and, if last claim, cancels payment process.
+     */
+    public void onChunkLoaderRemoved(Player player, String chunkKey) {
+        UUID playerUUID = player.getUniqueId();
+        unloadChunkAndSurrounding(chunkKey);
+
+        List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
+        if (playerChunks == null || playerChunks.isEmpty()) {
+            cancelPaymentTask(playerUUID);
+            loadedPlayers.remove(playerUUID);
         }
     }
 
@@ -113,7 +155,7 @@ public class PaymentHandler implements Listener {
     private void checkPaymentsForPlayer(UUID playerUUID) {
         List<String> chunks = chunkConfig.getStringList(playerUUID.toString());
         if (chunks == null || chunks.isEmpty()) {
-            cancelPaymentTask(playerUUID); // Defensive: clean up unnecessary task
+            cancelPaymentTask(playerUUID);
             return;
         }
         int chunkCount = chunks.size();
@@ -144,6 +186,7 @@ public class PaymentHandler implements Listener {
                 player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, org.bukkit.SoundCategory.MASTER, 1.0f, 1.0f);
             }
             cancelPaymentTask(playerUUID);
+            loadedPlayers.remove(playerUUID);
         }
     }
 

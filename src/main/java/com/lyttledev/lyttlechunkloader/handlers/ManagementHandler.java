@@ -29,7 +29,7 @@ public class ManagementHandler implements Listener {
         this.chunkConfig = plugin.config.chunks;
         this.chunkRangeUtil = new ChunkRangeUtil(1, 4);
         this.doubleLoaderEnforcer = new DoubleChunkLoaderEnforcer(plugin, chunkRangeUtil, 1);
-        this.paymentHandler = plugin.paymentHandler; // Assumes paymentHandler is set on plugin
+        this.paymentHandler = plugin.paymentHandler;
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -76,20 +76,33 @@ public class ManagementHandler implements Listener {
         Player player = event.getPlayer();
 
         switch (block.getType()) {
-            case Material.LODESTONE:
+            case LODESTONE:
                 Block above = block.getLocation().clone().add(0, 1, 0).getBlock();
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(block.getLocation(), player);
-                    claimChunkAt(block.getLocation(), player);
-                    paymentHandler.onPlayerChunkLoaderCreate(player);
+                    boolean claimed = claimChunkAt(block.getLocation(), player);
+                    if (claimed) {
+                        boolean paid = paymentHandler.chargeAndStartProcessOnCreate(player, getChunkKey(block.getLocation()));
+                        if (!paid) {
+                            // Remove the loader if payment fails
+                            removeDoubleChunkLoader(block.getLocation());
+                            player.sendMessage(Component.text("You could not afford a chunk loader here. The block was removed.", NamedTextColor.RED));
+                        }
+                    }
                 }
                 break;
-            case Material.LIGHTNING_ROD:
+            case LIGHTNING_ROD:
                 Block below = block.getLocation().clone().add(0, -1, 0).getBlock();
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(below.getLocation(), player);
-                    claimChunkAt(below.getLocation(), player);
-                    paymentHandler.onPlayerChunkLoaderCreate(player);
+                    boolean claimed = claimChunkAt(below.getLocation(), player);
+                    if (claimed) {
+                        boolean paid = paymentHandler.chargeAndStartProcessOnCreate(player, getChunkKey(below.getLocation()));
+                        if (!paid) {
+                            removeDoubleChunkLoader(below.getLocation());
+                            player.sendMessage(Component.text("You could not afford a chunk loader here. The block was removed.", NamedTextColor.RED));
+                        }
+                    }
                 }
                 break;
         }
@@ -106,12 +119,14 @@ public class ManagementHandler implements Listener {
                 Block above = location.clone().add(0, 1, 0).getBlock();
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(location, player);
+                    removeChunkClaim(location, player);
                 }
                 break;
             case LIGHTNING_ROD:
                 Block below = location.clone().add(0, -1, 0).getBlock();
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnRemove(below.getLocation(), player);
+                    removeChunkClaim(below.getLocation(), player);
                 }
                 break;
         }
@@ -161,13 +176,14 @@ public class ManagementHandler implements Listener {
         }
     }
 
-    private void claimChunkAt(Location lodestoneLocation, Player player) {
+    // Returns true if claim succeeded, false if already claimed
+    private boolean claimChunkAt(Location lodestoneLocation, Player player) {
         Block lodestone = lodestoneLocation.getBlock();
         Block rod = lodestoneLocation.clone().add(0, 1, 0).getBlock();
 
         if (lodestone.getType() != Material.LODESTONE || rod.getType() != Material.LIGHTNING_ROD) {
             player.sendMessage(Component.text("You can only claim if a lightning rod is placed on top of a lodestone.", NamedTextColor.GRAY));
-            return;
+            return false;
         }
 
         Chunk centerChunk = lodestoneLocation.getChunk();
@@ -198,6 +214,28 @@ public class ManagementHandler implements Listener {
 
         sendVisualization(lodestoneLocation, player);
 
-        player.playSound(lodestoneLocation, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1.0f, 1.0f);
+        if (claimedNow) {
+            player.playSound(lodestoneLocation, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1.0f, 1.0f);
+        }
+        return claimedNow;
+    }
+
+    // Removes the claim, notifies PaymentHandler for unload & possible task cancel
+    private void removeChunkClaim(Location lodestoneLocation, Player player) {
+        String key = getChunkKey(lodestoneLocation);
+        List<String> chunkList = getPlayerChunks(player);
+        if (chunkList.contains(key)) {
+            chunkList.remove(key);
+            savePlayerChunks(player, chunkList);
+            paymentHandler.onChunkLoaderRemoved(player, key);
+        }
+    }
+
+    // Physically remove double loader (lodestone+rod)
+    private void removeDoubleChunkLoader(Location lodestoneLoc) {
+        Block base = lodestoneLoc.getBlock();
+        Block above = lodestoneLoc.clone().add(0, 1, 0).getBlock();
+        if (base.getType() == Material.LODESTONE) base.setType(Material.AIR);
+        if (above.getType() == Material.LIGHTNING_ROD) above.setType(Material.AIR);
     }
 }
