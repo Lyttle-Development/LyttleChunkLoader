@@ -3,6 +3,8 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
+import com.lyttledev.lyttlechunkloader.handlers.ManagementHandler;
+import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
 import com.lyttledev.lyttleutils.types.Config;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
@@ -24,7 +26,7 @@ public class PaymentHandler implements Listener {
     private final ChunkRangeUtil chunkRangeUtil;
     private final Set<String> loadedChunkKeys = Collections.synchronizedSet(new HashSet<>());
     private final Set<UUID> loadedPlayers = Collections.synchronizedSet(new HashSet<>());
-    private static final int PAYMENT_CHECK_INTERVAL = 30 * 60; // 30 minutes in seconds
+    private static final int PAYMENT_CHECK_INTERVAL = 10; //30 * 60; // 30 minutes in seconds
     private static final double DUTY_PER_CHUNK = 30.0;
     private final Economy economy;
     private final Map<UUID, BukkitTask> playerPaymentTasks = Collections.synchronizedMap(new HashMap<>());
@@ -54,39 +56,41 @@ public class PaymentHandler implements Listener {
         List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
         if (playerChunks == null || playerChunks.isEmpty()) return;
         loadedPlayers.add(playerUUID);
-        // Load all claimed chunks for this player
         for (String chunkKey : playerChunks) {
             loadChunkAndSurrounding(chunkKey);
         }
         player.sendMessage("§aYour claimed chunks have been loaded. Payment will be checked every " + (PAYMENT_CHECK_INTERVAL / 60) + " minutes.");
-        // Start per-player payment timer
-        BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> checkPaymentsForPlayer(playerUUID), PAYMENT_CHECK_INTERVAL * 20L, PAYMENT_CHECK_INTERVAL * 20L);
-        // Cancel any existing task for this player
-        cancelPaymentTask(playerUUID);
-        // Store the task for this player
-        playerPaymentTasks.put(playerUUID, task);
-        // Charge immediately for the first period after join
-        checkPaymentsForPlayer(playerUUID);
+        startPaymentProcess(player);
     }
 
     @EventHandler
     public void onPlayerLeave(PlayerQuitEvent event) {
         UUID playerUUID = event.getPlayer().getUniqueId();
         loadedPlayers.remove(playerUUID);
-        // Unload all chunks for this player
         List<String> playerChunks = chunkConfig.getStringList(playerUUID.toString());
         if (playerChunks != null) {
             for (String chunkKey : playerChunks) {
                 unloadChunkAndSurrounding(chunkKey);
             }
         }
-        // Cancel payment task
         cancelPaymentTask(playerUUID);
     }
 
     /**
+     * Starts the payment process (periodic task) for the player if not already running.
+     * Used on join and on new chunk loader creation.
+     */
+    public void startPaymentProcess(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        cancelPaymentTask(playerUUID); // cancel any existing
+        BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> checkPaymentsForPlayer(playerUUID), PAYMENT_CHECK_INTERVAL * 20L, PAYMENT_CHECK_INTERVAL * 20L);
+        playerPaymentTasks.put(playerUUID, task);
+        checkPaymentsForPlayer(playerUUID);
+    }
+
+    /**
      * Checks payment for a single player with claimed chunks.
-     * If a player cannot pay, their chunks are deleted and unloaded, payment task is canceled,
+     * If a player cannot pay, their chunks are deleted, unloaded, payment task is canceled,
      * and all corresponding double chunk loaders are dropped in the world.
      */
     private void checkPaymentsForPlayer(UUID playerUUID) {
@@ -105,17 +109,15 @@ public class PaymentHandler implements Listener {
                 }
             }
         } else {
-            // Not enough funds: remove all claims, unload chunks, and remove & drop chunk loaders
             for (String chunkKey : chunks) {
                 unloadChunkAndSurrounding(chunkKey);
-                // Remove and drop the physical double chunk loader structure for this chunk if present
                 dropDoubleChunkLoaderAt(chunkKey);
             }
             chunkConfig.set(playerUUID.toString(), new ArrayList<>());
             Player player = offlinePlayer.getPlayer();
             if (player != null && player.isOnline()) {
                 player.sendMessage("§cYour chunk loader claims have been removed due to insufficient funds. The chunk loaders were dropped at their locations.");
-                player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, org.bukkit.SoundCategory.MASTER, 1.0f, 1.0f); // Danger sound
+                player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, org.bukkit.SoundCategory.MASTER, 1.0f, 1.0f);
             }
             cancelPaymentTask(playerUUID);
         }
@@ -134,7 +136,6 @@ public class PaymentHandler implements Listener {
         World world = Bukkit.getWorld(worldName);
         if (world == null) return;
 
-        // Scan all y and chunk-local x/z for a double loader in this chunk (as in DoubleChunkLoaderEnforcer)
         for (int y = world.getMinHeight(); y < world.getMaxHeight() - 1; y++) {
             for (int lx = 0; lx < 16; lx++) {
                 for (int lz = 0; lz < 16; lz++) {
@@ -143,25 +144,19 @@ public class PaymentHandler implements Listener {
                     org.bukkit.Location base = new org.bukkit.Location(world, bx, y, bz);
                     if (isPhysicalDoubleLoader(base)) {
                         breakDoubleChunkLoader(base, true);
-                        return; // Only one per chunk, stop after found
+                        return;
                     }
                 }
             }
         }
     }
 
-    /**
-     * Returns true if the given Location is a Lodestone with Lightning Rod directly above.
-     */
     private boolean isPhysicalDoubleLoader(org.bukkit.Location lodestoneLoc) {
         org.bukkit.block.Block base = lodestoneLoc.getBlock();
         org.bukkit.block.Block above = lodestoneLoc.clone().add(0, 1, 0).getBlock();
         return base.getType() == org.bukkit.Material.LODESTONE && above.getType() == org.bukkit.Material.LIGHTNING_ROD;
     }
 
-    /**
-     * Breaks the DOUBLE chunk loader at lodestoneLoc. Optionally drops items.
-     */
     private void breakDoubleChunkLoader(org.bukkit.Location lodestoneLoc, boolean dropItems) {
         org.bukkit.block.Block base = lodestoneLoc.getBlock();
         org.bukkit.block.Block above = lodestoneLoc.clone().add(0, 1, 0).getBlock();
@@ -176,10 +171,6 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Unloads all chunks previously loaded by this plugin (on plugin/server disable).
-     * Removes plugin tickets.
-     */
     public void unloadAllClaimedChunks() {
         synchronized (loadedChunkKeys) {
             for (String chunkKey : loadedChunkKeys) {
@@ -196,9 +187,6 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Loads the chunk for the specified key and all surrounding area chunks using plugin tickets.
-     */
     public void loadChunkAndSurrounding(String chunkKey) {
         String[] parts = chunkKey.split(":");
         if (parts.length < 3) return;
@@ -219,10 +207,6 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Unloads the chunk for the specified key and all surrounding area chunks.
-     * Removes plugin tickets.
-     */
     public void unloadChunkAndSurrounding(String chunkKey) {
         String[] parts = chunkKey.split(":");
         if (parts.length < 3) return;
@@ -244,9 +228,6 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Cancels and removes a player's payment task.
-     */
     private void cancelPaymentTask(UUID playerUUID) {
         BukkitTask task = playerPaymentTasks.remove(playerUUID);
         if (task != null) {
@@ -254,9 +235,6 @@ public class PaymentHandler implements Listener {
         }
     }
 
-    /**
-     * Cancels all running payment tasks (e.g., on plugin disable).
-     */
     private void cancelAllPaymentTasks() {
         for (BukkitTask task : playerPaymentTasks.values()) {
             task.cancel();

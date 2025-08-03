@@ -25,6 +25,7 @@ public final class LyttleChunkLoader extends JavaPlugin {
     public GlobalConfig global;
     public MiniMessage miniMessage = MiniMessage.miniMessage();
     public WorldBorderChunkHighlighter borderHighlighter;
+    public PaymentHandler paymentHandler;
 
     @Override
     public void onEnable() {
@@ -50,7 +51,7 @@ public final class LyttleChunkLoader extends JavaPlugin {
         new LyttleChunkLoaderCommand(this);
 
         // Handlers
-        new PaymentHandler(this);
+        this.paymentHandler = new PaymentHandler(this);
         new ManagementHandler(this);
 
         // Export Material list on plugin startup (only if file doesn't exist)

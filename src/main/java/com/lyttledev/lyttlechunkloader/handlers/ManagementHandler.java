@@ -3,6 +3,7 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
+import com.lyttledev.lyttlechunkloader.handlers.PaymentHandler;
 import com.lyttledev.lyttleutils.types.Config;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -81,6 +82,7 @@ public class ManagementHandler implements Listener {
                 if (above.getType() == Material.LIGHTNING_ROD) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(block.getLocation(), player);
                     claimChunkAt(block.getLocation(), player);
+                    plugin.paymentHandler.startPaymentProcess(player); // Start payment process on create
                 }
                 break;
             case Material.LIGHTNING_ROD:
@@ -88,6 +90,7 @@ public class ManagementHandler implements Listener {
                 if (below.getType() == Material.LODESTONE) {
                     doubleLoaderEnforcer.enforceUniqueDoubleChunkLoaderOnCreate(below.getLocation(), player);
                     claimChunkAt(below.getLocation(), player);
+                    plugin.paymentHandler.startPaymentProcess(player); // Start payment process on create
                 }
                 break;
         }
@@ -172,7 +175,6 @@ public class ManagementHandler implements Listener {
         List<String> chunkList = getPlayerChunks(player);
         boolean alreadyClaimed = false;
 
-        // Check if any chunk in the area is already claimed by this player
         Set<String> areaKeys = chunkRangeUtil.getAreaChunkKeys(
                 lodestoneLocation.getWorld(),
                 centerChunk.getX(),
@@ -188,7 +190,6 @@ public class ManagementHandler implements Listener {
         boolean claimedNow = false;
         String key = getChunkKey(lodestoneLocation);
         if (!alreadyClaimed) {
-            // Only add the center chunk to player's claims
             if (!chunkList.contains(key)) {
                 chunkList.add(key);
                 claimedNow = true;
@@ -198,7 +199,6 @@ public class ManagementHandler implements Listener {
 
         sendVisualization(lodestoneLocation, player);
 
-        // Satisfying level-up sound
         player.playSound(lodestoneLocation, Sound.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1.0f, 1.0f);
     }
 }
