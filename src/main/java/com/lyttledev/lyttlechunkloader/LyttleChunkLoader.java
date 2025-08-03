@@ -2,7 +2,7 @@ package com.lyttledev.lyttlechunkloader;
 
 import com.lyttledev.lyttlechunkloader.commands.LyttleChunkLoaderCommand;
 import com.lyttledev.lyttlechunkloader.handlers.ManagementHandler;
-import com.lyttledev.lyttlechunkloader.handlers.ProtectionHandler;
+import com.lyttledev.lyttlechunkloader.handlers.PaymentHandler;
 import com.lyttledev.lyttlechunkloader.types.Configs;
 import com.lyttledev.lyttlechunkloader.utils.MaterialExporter;
 import com.lyttledev.lyttlechunkloader.utils.WorldBorderChunkHighlighter;
@@ -41,7 +41,7 @@ public final class LyttleChunkLoader extends JavaPlugin {
         new LyttleChunkLoaderCommand(this);
 
         // Handlers
-        new ProtectionHandler(this);
+        new PaymentHandler(this);
         new ManagementHandler(this);
 
         // Export Material list on plugin startup (only if file doesn't exist)
