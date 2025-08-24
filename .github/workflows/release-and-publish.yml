@@ -98,12 +98,6 @@ jobs:
           echo "githubPackagesUsername=${GPR_USER}" >> $GITHUB_ENV
           echo "githubPackagesPassword=${GPR_API_KEY}" >> $GITHUB_ENV
 
-      - name: Download JAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: plugin-jar
-          path: ./dist
-
       - name: Publish to Hangar
         env:
           HANGAR_API_TOKEN: ${{ secrets.HANGAR_API_TOKEN }}
@@ -139,12 +133,6 @@ jobs:
         run: |
           echo "githubPackagesUsername=${GPR_USER}" >> $GITHUB_ENV
           echo "githubPackagesPassword=${GPR_API_KEY}" >> $GITHUB_ENV
-
-      - name: Download JAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: plugin-jar
-          path: ./dist
 
       - name: Publish to Modrinth
         env:
