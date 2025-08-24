@@ -3,7 +3,7 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
-import com.lyttledev.lyttleutils.types.Config;
+import com.lyttledev.lyttleutils.types.YamlConfig;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -20,7 +20,7 @@ import java.util.*;
 
 public class PaymentHandler implements Listener {
     private final LyttleChunkLoader plugin;
-    private final Config chunkConfig;
+    private final YamlConfig chunkConfig;
     private final ChunkRangeUtil chunkRangeUtil;
     private final Set<String> loadedChunkKeys = Collections.synchronizedSet(new HashSet<>());
     private final Set<UUID> loadedPlayers = Collections.synchronizedSet(new HashSet<>());

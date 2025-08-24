@@ -2,7 +2,7 @@ package com.lyttledev.lyttlechunkloader.utils;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 
-import com.lyttledev.lyttleutils.types.Config;
+import com.lyttledev.lyttleutils.types.YamlConfig;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.*;
@@ -23,7 +23,7 @@ import java.util.*;
 public class DoubleChunkLoaderEnforcer {
 
     private final LyttleChunkLoader plugin;
-    private final Config chunkConfig;
+    private final YamlConfig chunkConfig;
     private final ChunkRangeUtil chunkRangeUtil;
     private final int enforceRadius; // Number of chunks radius to enforce uniqueness
 

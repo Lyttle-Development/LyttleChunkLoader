@@ -1,34 +1,34 @@
 package com.lyttledev.lyttlechunkloader.types;
 
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
-import com.lyttledev.lyttleutils.types.Config;
+import com.lyttledev.lyttleutils.types.YamlConfig;
 
 public class Configs {
     private final LyttleChunkLoader plugin;
 
     // Configs
-    public Config general;
-    public Config chunks;
-    public Config messages;
+    public YamlConfig general;
+    public YamlConfig chunks;
+    public YamlConfig messages;
 
     // Default configs
-    public Config defaultGeneral;
-    public Config defaultChunks;
-    public Config defaultMessages;
+    public YamlConfig defaultGeneral;
+    public YamlConfig defaultChunks;
+    public YamlConfig defaultMessages;
 
 
     public Configs(LyttleChunkLoader plugin) {
         this.plugin = plugin;
 
         // Configs
-        general = new Config(plugin, "config.yml");
-        chunks = new Config(plugin, "chunks.yml");
-        messages = new Config(plugin, "messages.yml");
+        general = new YamlConfig(plugin, "config.yml");
+        chunks = new YamlConfig(plugin, "chunks.yml");
+        messages = new YamlConfig(plugin, "messages.yml");
 
         // Default configs
-        defaultGeneral = new Config(plugin, "#defaults/config.yml");
-        defaultChunks = new Config(plugin, "#defaults/chunks.yml");
-        defaultMessages = new Config(plugin, "#defaults/messages.yml");
+        defaultGeneral = new YamlConfig(plugin, "#defaults/config.yml");
+        defaultChunks = new YamlConfig(plugin, "#defaults/chunks.yml");
+        defaultMessages = new YamlConfig(plugin, "#defaults/messages.yml");
     }
 
     public void reload() {

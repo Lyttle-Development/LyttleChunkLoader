@@ -3,7 +3,7 @@ package com.lyttledev.lyttlechunkloader.handlers;
 import com.lyttledev.lyttlechunkloader.LyttleChunkLoader;
 import com.lyttledev.lyttlechunkloader.utils.ChunkRangeUtil;
 import com.lyttledev.lyttlechunkloader.utils.DoubleChunkLoaderEnforcer;
-import com.lyttledev.lyttleutils.types.Config;
+import com.lyttledev.lyttleutils.types.YamlConfig;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.*;
@@ -19,7 +19,7 @@ import java.util.*;
 
 public class ManagementHandler implements Listener {
     private final LyttleChunkLoader plugin;
-    private final Config chunkConfig;
+    private final YamlConfig chunkConfig;
     private final ChunkRangeUtil chunkRangeUtil;
     private final DoubleChunkLoaderEnforcer doubleLoaderEnforcer;
     private final PaymentHandler paymentHandler;

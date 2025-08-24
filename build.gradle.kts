@@ -35,7 +35,7 @@ dependencies {
     compileOnly("me.clip:placeholderapi:2.11.6")
     compileOnly("com.github.retrooper:packetevents-spigot:2.9.4")
     compileOnly("com.github.retrooper:packetevents-spigot:2.9.4")
-    implementation("com.lyttledev:lyttleutils:1.1.8-BETA.005")
+    implementation("com.lyttledev:lyttleutils:1.2.0")
 }
 
 group = "com.lyttledev"
